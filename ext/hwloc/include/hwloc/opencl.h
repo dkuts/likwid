@@ -1,6 +1,6 @@
 /*
- * Copyright © 2012-2013 Inria.  All rights reserved.
- * Copyright © 2013 Université Bordeaux.  All right reserved.
+ * Copyright © 2012-2018 Inria.  All rights reserved.
+ * Copyright © 2013, 2018 Université Bordeaux.  All right reserved.
  * See COPYING in top-level directory.
  */
 
@@ -21,8 +21,13 @@
 #include <hwloc/linux.h>
 #endif
 
+#ifdef __APPLE__
+#include <OpenCL/cl.h>
+#include <OpenCL/cl_ext.h>
+#else
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
+#endif
 
 #include <stdio.h>
 
@@ -69,7 +74,6 @@ hwloc_opencl_get_device_cpuset(hwloc_topology_t topology __hwloc_attribute_unuse
 	/* If we're on Linux + AMD OpenCL, use the AMD extension + the sysfs mechanism to get the local cpus */
 #define HWLOC_OPENCL_DEVICE_SYSFS_PATH_MAX 128
 	char path[HWLOC_OPENCL_DEVICE_SYSFS_PATH_MAX];
-	FILE *sysfile = NULL;
 	cl_device_topology_amd amdtopo;
 	cl_int clret;
 
@@ -88,16 +92,11 @@ hwloc_opencl_get_device_cpuset(hwloc_topology_t topology __hwloc_attribute_unuse
 		return 0;
 	}
 
-	sprintf(path, "/sys/bus/pci/devices/0000:%02x:%02x.%01x/local_cpus", amdtopo.pcie.bus, amdtopo.pcie.device, amdtopo.pcie.function);
-	sysfile = fopen(path, "r");
-	if (!sysfile)
-		return -1;
-
-	hwloc_linux_parse_cpumap_file(sysfile, set);
-	if (hwloc_bitmap_iszero(set))
+	sprintf(path, "/sys/bus/pci/devices/0000:%02x:%02x.%01x/local_cpus",
+		(unsigned) amdtopo.pcie.bus, (unsigned) amdtopo.pcie.device, (unsigned) amdtopo.pcie.function);
+	if (hwloc_linux_read_path_as_cpumask(path, set) < 0
+	    || hwloc_bitmap_iszero(set))
 		hwloc_bitmap_copy(set, hwloc_topology_get_complete_cpuset(topology));
-
-	fclose(sysfile);
 #else
 	/* Non-Linux + AMD OpenCL systems simply get a full cpuset */
 	hwloc_bitmap_copy(set, hwloc_topology_get_complete_cpuset(topology));
@@ -118,7 +117,7 @@ hwloc_opencl_get_device_cpuset(hwloc_topology_t topology __hwloc_attribute_unuse
  * I/O devices detection and the OpenCL component must be enabled in the topology.
  *
  * \note The corresponding PCI device object can be obtained by looking
- * at the OS device parent object.
+ * at the OS device parent object (unless PCI devices are filtered out).
  */
 static __hwloc_inline hwloc_obj_t
 hwloc_opencl_get_device_osdev_by_index(hwloc_topology_t topology,
@@ -136,18 +135,25 @@ hwloc_opencl_get_device_osdev_by_index(hwloc_topology_t topology,
         return NULL;
 }
 
-/** \brief Get the hwloc OS device object corresponding to OpenCL device \p device.
+/** \brief Get the hwloc OS device object corresponding to OpenCL device \p deviceX.
  *
- * Return the hwloc OS device object that describes the given
- * OpenCL device \p device. Return NULL if there is none.
+ * Use OpenCL device attributes to find the corresponding hwloc OS device object.
+ * Return NULL if there is none or if useful attributes are not available.
+ *
+ * This function currently only works on AMD OpenCL devices that support
+ * the CL_DEVICE_TOPOLOGY_AMD extension. hwloc_opencl_get_device_osdev_by_index()
+ * should be preferred whenever possible, i.e. when platform and device index
+ * are known.
  *
  * Topology \p topology and device \p device must match the local machine.
  * I/O devices detection and the OpenCL component must be enabled in the topology.
  * If not, the locality of the object may still be found using
  * hwloc_opencl_get_device_cpuset().
  *
+ * \note This function cannot work if PCI devices are filtered out.
+ *
  * \note The corresponding hwloc PCI device may be found by looking
- * at the result parent pointer.
+ * at the result parent pointer (unless PCI devices are filtered out).
  */
 static __hwloc_inline hwloc_obj_t
 hwloc_opencl_get_device_osdev(hwloc_topology_t topology __hwloc_attribute_unused,
@@ -180,6 +186,7 @@ hwloc_opencl_get_device_osdev(hwloc_topology_t topology __hwloc_attribute_unused
 		    && pcidev->attr->pcidev.dev == amdtopo.pcie.device
 		    && pcidev->attr->pcidev.func == amdtopo.pcie.function)
 			return osdev;
+		/* if PCI are filtered out, we need a info attr to match on */
 	}
 
 	return NULL;

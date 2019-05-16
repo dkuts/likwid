@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2014 Inria.  All rights reserved.
+ * Copyright © 2009-2017 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -14,16 +14,22 @@ static int
 hwloc_look_noos(struct hwloc_backend *backend)
 {
   struct hwloc_topology *topology = backend->topology;
+  int nbprocs;
 
   if (topology->levels[0][0]->cpuset)
     /* somebody discovered things */
-    return 0;
+    return -1;
 
-  hwloc_alloc_obj_cpusets(topology->levels[0][0]);
-  hwloc_setup_pu_level(topology, hwloc_fallback_nbprocessors(topology));
-  if (topology->is_thissystem)
-    hwloc_add_uname_info(topology, NULL);
-  return 1;
+  nbprocs = hwloc_fallback_nbprocessors(topology);
+  if (nbprocs >= 1)
+    topology->support.discovery->pu = 1;
+  else
+    nbprocs = 1;
+
+  hwloc_alloc_root_sets(topology->levels[0][0]);
+  hwloc_setup_pu_level(topology, nbprocs);
+  hwloc_add_uname_info(topology, NULL);
+  return 0;
 }
 
 static struct hwloc_backend *
@@ -46,6 +52,7 @@ static struct hwloc_disc_component hwloc_noos_disc_component = {
   HWLOC_DISC_COMPONENT_TYPE_GLOBAL,
   hwloc_noos_component_instantiate,
   40, /* lower than native OS component, higher than globals */
+  1,
   NULL
 };
 
