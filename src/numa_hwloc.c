@@ -439,9 +439,11 @@ hwloc_numa_membind(void* ptr, size_t size, int domainId)
     hwloc_nodeset_t nodeset = likwid_hwloc_bitmap_alloc();
     likwid_hwloc_bitmap_zero(nodeset);
     likwid_hwloc_bitmap_set(nodeset, domainId);
-    // call before hwloc update
-    //ret = likwid_hwloc_set_area_membind_nodeset(hwloc_topology, ptr, size, nodeset, HWLOC_MEMBIND_BIND, flags);
+#if HWLOC_API_VERSION > 0x00020000
     ret = likwid_hwloc_set_area_membind(hwloc_topology, ptr, size, nodeset, HWLOC_MEMBIND_BIND, flags);
+#else
+    ret = likwid_hwloc_set_area_membind_nodeset(hwloc_topology, ptr, size, nodeset, HWLOC_MEMBIND_BIND, flags);
+#endif
     likwid_hwloc_bitmap_free(nodeset);
 
     if (ret < 0)
