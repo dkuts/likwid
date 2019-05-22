@@ -435,6 +435,8 @@ void
 hwloc_numa_membind(void* ptr, size_t size, int domainId)
 {
     int ret = 0;
+    if (!ptr || size == 0 || domainId < 0 || domainId >= numa_info.numberOfNodes)
+        return;
     hwloc_membind_flags_t flags = HWLOC_MEMBIND_STRICT|HWLOC_MEMBIND_PROCESS|HWLOC_MEMBIND_BYNODESET;
     hwloc_nodeset_t nodeset = likwid_hwloc_bitmap_alloc();
     likwid_hwloc_bitmap_zero(nodeset);
